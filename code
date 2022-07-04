@@ -1,0 +1,323 @@
+#######################| Summary of Libraries#######################
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+import seaborn as sns
+from sklearn.metrics import mean_absolute_error
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import OneHotEncoder, normalize
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, HistGradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
+
+#######################
+X_train = pd.read_csv('../input/titanic/train.csv', index_col = 0, header=0)
+X_test = pd.read_csv('../input/titanic/test.csv', index_col = 0, header=0)
+# X_train.head(7)        -> To look at the first 7 rows of dataframe
+    
+# X_train.dtypes         -> To look at the type of each column
+    
+# X_train.isnull().sum() -> To look at how many missing values we'll have to handle
+
+# Using X_train.head(7) was possible to see some columns with 'NaN' (empty) values, then, to look at it in a smart way, 
+# I used sns.heatmap looking for lack of data, in the image below we'll see that 'Age' and 'Cabin' has many missing values, 
+# and it can be a problem if we don't solve it. Also, I used X_train.dtypes to look at numerical and categorical data. And finishing, 
+# I had used X_train.isnull().sum() to count how many empty values I have in each column.
+
+plt.figure(figsize=(24,8))
+sns.heatmap(X_train.isnull(), cmap='rocket')
+plt.show()
+#######################| X_train['Sex']¶
+# My first idea was to use .corr() with dataframe and visualize the relationship between Survivable and other attributes, 
+# but with raw data many columns are neglected in this approach. So, I decided to manipulate some columns before make any correlations. 
+#######################| X_train['Sex']¶
+# My first idea was to convert 'Sex' column into 'Male' and 'Female' binary columns, the reason was that in survival situation, women and children usually 
+# has preferences. So, I think that's a good start to analyze.
+
+X_train['Male'] = X_train['Sex'].replace({'male': 1, 'female': 0})
+X_train['Female'] = X_train['Sex'].replace({'male': 0, 'female': 1})
+
+# X_train['Male'].groupby(X_train['Survived']).sum()   -> [0 468] [1 109] -> 25% Survival rate for Male
+# X_train['Female'].groupby(X_train['Survived']).sum() -> [0  81] [1 233] -> 75% Survival rate for Female
+
+f, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 7), sharex=True)
+sns.barplot(data=X_train, x='Male', y='Survived', palette="cubehelix", ax=ax1)
+sns.barplot(data=X_train, x='Female', y='Survived', palette="cubehelix", ax=ax2)
+plt.show()
+
+
+#######################| X_train['Pclass']¶
+# Pclass refers about socio-economic status, that's a good metric to analyze, do you think that First Class has high rate to survive than Third Class?
+
+X_train['Pclass_1'] =  X_train['Pclass'].replace({1:1, 2:0, 3:0})
+X_train['Pclass_2'] =  X_train['Pclass'].replace({1:0, 2:1, 3:0})
+X_train['Pclass_3'] =  X_train['Pclass'].replace({1:0, 2:0, 3:1})
+
+# X_train['Pclass_1'].groupby(X_train['Survived']).sum() -> [0  80] [1 136] -> 62% Survival rate for 1st Class
+# X_train['Pclass_2'].groupby(X_train['Survived']).sum() -> [0  97] [1  87] -> 47% Survival rate for 2nd Class
+# X_train['Pclass_3'].groupby(X_train['Survived']).sum() -> [0 372] [1 119] -> 24% Survival rate for 3rd Class
+# As we look at graph below we will se that 1st and 2nd class has high rates to survive than 3rd class.
+
+f, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 7), sharex=True)
+sns.barplot(data=X_train, x='Pclass_1', y='Survived', palette="rocket", ax=ax1)
+sns.barplot(data=X_train, x='Pclass_2', y='Survived', palette="rocket", ax=ax2)
+sns.barplot(data=X_train, x='Pclass_3', y='Survived', palette="rocket", ax=ax3)
+plt.show()
+####################### | X_train['Cabin']¶
+# Despite the fact that cabins has many missing values, when we look at cabins that are filled, they show good relationship with survivance
+# People who has "N/A" in Cabin cell, usually don't survive according to the data.
+
+X_train['Cabin_new'] = X_train['Cabin'].astype(str).str[0]
+X_train['Cabin_new'] = X_train['Cabin_new'].replace('n','N/A')
+# X_train['Cabin'].isnull().groupby(X_train['Survived']).sum() -> [0 481] [1 206] -> 33% Survival rate if Cabin is Null
+# X_train['Cabin'].notnull().groupby(X_train['Survived']).sum() -> [0 68] [1 136] -> 66% Survival rate if Cabin is Null
+plt.figure(figsize=(20, 7))
+sns.barplot(data=X_train, x='Cabin_new', y='Survived', palette="viridis")
+plt.show()
+
+
+####################### | X_train['Embarked']
+
+# Same idea was used with Embarked, and wee see that people who embarked in C has more chance to survive than S and Q.
+
+X_train['Embarked_S'] =  X_train['Embarked'].replace({'S':1, 'C':0, 'Q':0})
+X_train['Embarked_C'] =  X_train['Embarked'].replace({'S':0, 'C':1, 'Q':0})
+X_train['Embarked_Q'] =  X_train['Embarked'].replace({'S':0, 'C':0, 'Q':1})
+# X_train['Embarked_S'].groupby(X_train['Survived']).sum() -> [0 427] [1 217] -> 34% Survival rate for port S
+# X_train['Embarked_C'].groupby(X_train['Survived']).sum() -> [0  75] [1  93] -> 55% Survival rate for port C
+# X_train['Embarked_Q'].groupby(X_train['Survived']).sum() -> [0  47] [1  30] -> 39% Survival rate for port Q
+f, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 7), sharex=True)
+sns.barplot(data=X_train, x='Embarked_S', y='Survived', palette="mako", ax=ax1)
+sns.barplot(data=X_train, x='Embarked_C', y='Survived', palette="mako", ax=ax2)
+sns.barplot(data=X_train, x='Embarked_Q', y='Survived', palette="mako", ax=ax3)
+plt.show()
+#######################| X_train['Name']
+# Other cell to work is name, but it quite hard to see how names are related to survivance, but all of them has a "title" like Mr, Mrs, Miss...
+# So, the idea here is convert "Name" in their "Titles" and simplify this column in something more useful.
+
+# Converting Names in thir titles
+
+X_train["Title"] = X_train.Name.apply(lambda x: x[x.find(',') : x.find('.')][1:].strip())
+X_train["Title"] = X_train["Title"].apply(lambda x: 'Mr' if x == 'Mr' else x) # Mr
+X_train["Title"] = X_train["Title"].apply(lambda x: 'Miss' if x == 'Ms'or x == 'Mme' or x=='Mlle' else x) #Miss
+X_train["Title"] = X_train["Title"].apply(lambda x: 'Mrs' if x == 'Mrs' else x) #Mrs
+X_train["Title"] = X_train["Title"].apply(lambda x: 'Master' if x == 'Master' else x) #Master
+X_train["Title"] = X_train["Title"].apply(lambda x: 'Others' if x != 'Mr' and x != 'Miss' and x!= 'Mrs' and x!= 'Master' else x) #Others
+
+# Split Titles in binary columns
+
+X_train['Mr'] = (X_train["Title"]=='Mr').replace(False,0).replace(True,1)
+X_train['Mrs'] = (X_train["Title"]=='Mrs').replace(False,0).replace(True,1)
+X_train['Miss'] = ((X_train["Title"]=='Miss')|(X_train["Title"]=='Mme')|(X_train["Title"]=='Mlle')).replace(False,0).replace(True,1)
+X_train['Master'] = (X_train["Title"]=='Master').replace(False,0).replace(True,1)
+X_train['Others'] = ((X_train["Title"]!='Miss')|(X_train["Title"]=='Master')|(X_train["Title"]=='Mrs')|(X_train["Title"]=='Mr')).replace(False,0).replace(True,1)
+# X_train['Mr'].groupby(X_train['Survived']).sum()      -> [0 436] [1  81] -> 15% Survival rate for title Mr.
+# X_train['Mrs'].groupby(X_train['Survived']).sum()     -> [0  26] [1  99] -> 80% Survival rate for title Mrs.
+# X_train['Miss'].groupby(X_train['Survived']).sum()    -> [0  55] [1 131] -> 70% Survival rate for title Miss.
+# X_train['Master'].groupby(X_train['Survived']).sum()  -> [0  17] [1  23] -> 57% Survival rate for title Master.
+# X_train['Others'].groupby(X_train['Survived']).sum()  -> [0 494] [1 211] -> 30% Survival rate for title Others.
+#######################
+f, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(1, 5, figsize=(20, 7), sharex=True)
+sns.barplot(data=X_train, x='Mr', y='Survived', palette="crest", ax=ax1)
+sns.barplot(data=X_train, x='Mrs', y='Survived', palette="crest", ax=ax2)
+sns.barplot(data=X_train, x='Miss', y='Survived', palette="crest", ax=ax3)
+sns.barplot(data=X_train, x='Master', y='Survived', palette="crest", ax=ax4)
+sns.barplot(data=X_train, x='Others', y='Survived', palette="crest", ax=ax5)
+plt.show()
+#######################| X_train['Age']
+
+# As we saw in beginning, Ages is a column with much missing values and there's several ways to fill it.
+
+# Distribution Before Filling Ages
+f, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 7), sharex=True)
+ax1.title.set_text('Age x Sex - Distribution')
+ax2.title.set_text('Age x Survived - Distributiont')
+sns.kdeplot(data=X_train, x="Age", hue="Sex", fill=True, common_norm=False, palette="rocket", alpha=.5, linewidth=0, ax=ax1)
+sns.kdeplot(data=X_train, x="Age", hue="Survived", fill=True, common_norm=False, palette="rocket", alpha=.5, linewidth=0, ax=ax2)
+plt.show()
+
+#######################
+# Replacing empty values based on their titles.
+
+replace_values = X_train.groupby('Pclass').median()['Age']
+X_train.loc[(X_train['Age'].isnull() == 1) & (X_train['Pclass'] == 1), 'Age'] = replace_values[1]           
+X_train.loc[(X_train['Age'].isnull() == 1) & (X_train['Pclass'] == 2), 'Age'] = replace_values[2]                
+X_train.loc[(X_train['Age'].isnull() == 1) & (X_train['Pclass'] == 3), 'Age'] = replace_values[3]   
+
+# Distribution After Filling Ages
+f, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 7), sharex=True)
+ax1.title.set_text('Age x Sex - Distribution')
+ax2.title.set_text('Age x Survived - Distribution')
+sns.kdeplot(data=X_train, x="Age", hue="Sex", fill=True, common_norm=False, palette="rocket", alpha=.5, linewidth=0, ax=ax1)
+sns.kdeplot(data=X_train, x="Age", hue="Survived", fill=True, common_norm=False, palette="rocket", alpha=.5, linewidth=0, ax=ax2)
+plt.show()
+#######################
+# Converting Ages in binary columns spliting people in diferents segments
+# Children and Young Adults has high rates to survive and Older has lower rates to survive
+
+X_train['Age_Older'] =  (X_train['Age']>60).replace(False,0).replace(True,1)
+X_train['Age_LateAdult'] =  ((X_train['Age']>45)&(X_train['Age']<=60)).replace(False,0).replace(True,1)
+X_train['Age_MidAdult'] =  ((X_train['Age']>30)&(X_train['Age']<=45)).replace(False,0).replace(True,1)
+X_train['Age_YgAdult'] =  ((X_train['Age']>15)&(X_train['Age']<=30)).replace(False,0).replace(True,1)
+X_train['Age_Children'] =  (X_train['Age']<=15).replace(False,0).replace(True,1)
+
+f, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(1, 5, figsize=(20, 7), sharex=True)
+sns.barplot(data=X_train, x='Age_Children', y='Survived', palette="flare", ax=ax1)
+sns.barplot(data=X_train, x='Age_YgAdult', y='Survived', palette="flare", ax=ax2)
+sns.barplot(data=X_train, x='Age_MidAdult', y='Survived', palette="flare", ax=ax3)
+sns.barplot(data=X_train, x='Age_LateAdult', y='Survived', palette="flare", ax=ax4)
+sns.barplot(data=X_train, x='Age_Older', y='Survived', palette="flare", ax=ax5)
+plt.show()
+#######################| X_train['Fare']
+# Spliting Fare in differents %
+# People who paid 75%+ Fare has high rates to survive if compared with 25%
+
+X_train['Fare_25%'] = (X_train['Fare']<=8).replace(False,0).replace(True,1)
+X_train['Fare_50%'] = ((X_train['Age']>8)&(X_train['Age']<=15)).replace(False,0).replace(True,1)
+X_train['Fare_75%'] = ((X_train['Age']>15)&(X_train['Age']<=31)).replace(False,0).replace(True,1)
+X_train['Fare_75%+'] = (X_train['Fare']>31).replace(False,0).replace(True,1)
+
+f, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(20, 7), sharex=True)
+sns.barplot(data=X_train, x='Fare_25%', y='Survived', palette="crest", ax=ax1)
+sns.barplot(data=X_train, x='Fare_50%', y='Survived', palette="crest", ax=ax2)
+sns.barplot(data=X_train, x='Fare_75%', y='Survived', palette="crest", ax=ax3)
+sns.barplot(data=X_train, x='Fare_75%+', y='Survived', palette="crest", ax=ax4)
+plt.show()
+####################### X_train['SibSp'] + X_train['Parch']
+X_train['Family'] = X_train['SibSp'] + X_train['Parch'] + 1
+# Here we have something intersting, people with large family in Titanic has lower chances to survive, maybe they died while they tried to save their family.
+
+plt.figure(figsize=(20, 7))
+sns.barplot(data=X_train, x='Family', y='Survived', palette="viridis")
+plt.show()
+
+
+####################### Transforming Test Data
+# Here we just ajust test data
+X_test['Male'] = X_test['Sex'].replace({'male': 1, 'female': 0})
+X_test['Female'] = X_test['Sex'].replace({'male': 0, 'female': 1})
+
+X_test['Pclass_1'] =  X_test['Pclass'].replace({1:1, 2:0, 3:0})
+X_test['Pclass_2'] =  X_test['Pclass'].replace({1:0, 2:1, 3:0})
+X_test['Pclass_3'] =  X_test['Pclass'].replace({1:0, 2:0, 3:1})
+
+X_test['Cabin_new'] =  X_test['Cabin'].astype(str).str[0]
+X_test['Cabin_new'] = X_test['Cabin_new'].replace('n','N/A')
+
+X_test['Embarked_S'] =  X_test['Embarked'].replace({'S':1, 'C':0, 'Q':0})
+X_test['Embarked_C'] =  X_test['Embarked'].replace({'S':0, 'C':1, 'Q':0})
+X_test['Embarked_Q'] =  X_test['Embarked'].replace({'S':0, 'C':0, 'Q':1})
+
+X_test["Title"] = X_test.Name.apply(lambda x: x[x.find(',') : x.find('.')][1:].strip())
+X_test["Title"] = X_test["Title"].apply(lambda x: 'Mr' if x == 'Mr' else x) # Mr
+X_test["Title"] = X_test["Title"].apply(lambda x: 'Miss' if x == 'Ms'or x == 'Mme' or x=='Mlle' else x) #Miss
+X_test["Title"] = X_test["Title"].apply(lambda x: 'Mrs' if x == 'Mrs' else x) #Mrs
+X_test["Title"] = X_test["Title"].apply(lambda x: 'Master' if x == 'Master' else x) #Master
+X_test["Title"] = X_test["Title"].apply(lambda x: 'Others' if x != 'Mr' and x != 'Miss' and x!= 'Mrs' and x!= 'Master' else x) #Others
+X_test['Mr'] = (X_test["Title"]=='Mr').replace(False,0).replace(True,1)
+X_test['Mrs'] = (X_test["Title"]=='Mrs').replace(False,0).replace(True,1)
+X_test['Miss'] = ((X_test["Title"]=='Miss')|(X_test["Title"]=='Mme')|(X_test["Title"]=='Mlle')).replace(False,0).replace(True,1)
+X_test['Master'] = (X_test["Title"]=='Master').replace(False,0).replace(True,1)
+
+
+X_test['Others'] = ((X_test["Title"]!='Miss')|(X_test["Title"]=='Master')|(X_test["Title"]=='Mrs')|(X_test["Title"]=='Mr')).replace(False,0).replace(True,1)
+
+replace_values = X_test.groupby('Pclass').median()['Age']
+X_test.loc[(X_test['Age'].isnull() == 1) & (X_test['Pclass'] == 1), 'Age'] = replace_values[1]               
+X_test.loc[(X_test['Age'].isnull() == 1) & (X_test['Pclass'] == 2), 'Age'] = replace_values[2]                
+X_test.loc[(X_test['Age'].isnull() == 1) & (X_test['Pclass'] == 3), 'Age'] = replace_values[3]   
+
+X_test['Age_Older'] =  (X_test['Age']>60).replace(False,0).replace(True,1)
+X_test['Age_LateAdult'] =  ((X_test['Age']>45)&(X_test['Age']<=60)).replace(False,0).replace(True,1)
+X_test['Age_MidAdult'] =  ((X_test['Age']>30)&(X_test['Age']<=45)).replace(False,0).replace(True,1)
+X_test['Age_YgAdult'] =  ((X_test['Age']>15)&(X_test['Age']<=30)).replace(False,0).replace(True,1)
+X_test['Age_Children'] =  (X_test['Age']<=15).replace(False,0).replace(True,1)
+
+X_test['Fare_25%'] = (X_test['Fare']<=8).replace(False,0).replace(True,1)
+X_test['Fare_50%'] = ((X_test['Age']>8)&(X_test['Age']<=15)).replace(False,0).replace(True,1)
+X_test['Fare_75%'] = ((X_test['Age']>15)&(X_test['Age']<=31)).replace(False,0).replace(True,1)
+
+X_test['Fare_75%+'] = (X_test['Fare']>31).replace(False,0).replace(True,1)
+
+X_test['Family'] = X_test['SibSp'] + X_test['Parch']  + 1
+#######################Drop modified columns and Last visualization
+X_train.drop(['Cabin', 'Title','Age', 'SibSp', 'Fare', 'Parch', 'Pclass', 'Name', 'Ticket', 'Sex', 'Embarked'], axis=1, inplace=True)
+X_test.drop(['Cabin', 'Title','Age', 'SibSp', 'Fare', 'Parch', 'Pclass', 'Name', 'Ticket', 'Sex', 'Embarked'], axis=1, inplace=True)
+
+# Using the heatmap below we have all correlations between survivable and all other data, we can take lots of insights, like:
+
+# Negative Correlation:
+# Male, Pclass_3, Mr, Others, Fare_25%;
+
+# Positive Correlation:
+# Female, Pclass_1, Embarked_C, Mrs, Miss, Age_Children, Fare_75%+
+
+# Lots of data don't have a clear relationship with survivable and we maybe drop this columns to see what happend in our models.
+
+plt.figure(figsize=(24,8))
+sns.heatmap(X_train.select_dtypes(include='number').corr(), annot=True, linewidths=.5)
+plt.show()
+
+
+
+#######################
+#######################Modeling (ML)
+
+# Split parameters
+
+X_train.dropna(axis=0, subset=['Survived'], inplace=True)
+y = X_train.Survived
+X_train.drop(['Survived'], axis=1, inplace=True)
+X_train_2, X_valid, y_train, y_valid = train_test_split(X_train, y, train_size=0.7, test_size=0.3, random_state=0)
+# This block of code was basicaly used in Kaggle Courses, I decided to maintain here to handle with the few numerical gaps in Embarked column and categorical 
+# columns. 
+
+categorical_cols = [cname for cname in X_train.columns if X_train_2[cname].dtype == "object"]
+numerical_cols = [cname for cname in X_train.columns if X_train_2[cname].dtype in ['int64', 'float64']]
+
+# Preprocessing for numerical data
+numerical_transformer = SimpleImputer(strategy='mean')
+# Preprocessing for categorical data
+categorical_transformer = Pipeline(steps=[('imputer', SimpleImputer(strategy='most_frequent')), ('onehot', OneHotEncoder(handle_unknown='ignore'))])
+
+# Bundle preprocessing for numerical and categorical data
+preprocessor = ColumnTransformer(transformers=[('num', numerical_transformer, numerical_cols), ('cat', categorical_transformer, categorical_cols)])
+model_RFC =  RandomForestClassifier(random_state=100, n_estimators=1000, min_samples_split= 6, min_samples_leaf=2, max_depth=10)
+RandomForestClassifier_Pipeline = Pipeline(steps=[('preprocessor', preprocessor), ('classifier', model_RFC)])
+RandomForestClassifier_Pipeline.fit(X_train_2, y_train)
+preds_RFC = RandomForestClassifier_Pipeline.predict(X_valid)
+C_V = cross_val_score(RandomForestClassifier_Pipeline, X_train_2, y_train, cv=5, scoring='accuracy').mean()
+print('ACC', np.mean(y_valid == preds_RFC))
+print('C-V', C_V)
+preds_RFC2 = RandomForestClassifier_Pipeline.predict(X_test)
+
+#Update - Testing Model GBC 
+
+model_GBC =  GradientBoostingClassifier(random_state=100, n_estimators=200, learning_rate=0.023, max_features=3)
+GradientBoostingClassifier_Pipeline = Pipeline(steps=[('preprocessor', preprocessor), ('classifier', model_GBC)])
+GradientBoostingClassifier_Pipeline.fit(X_train_2, y_train)
+preds_GBC = GradientBoostingClassifier_Pipeline.predict(X_valid)
+C_V = cross_val_score(GradientBoostingClassifier_Pipeline, X_train_2, y_train, cv=5, scoring='accuracy').mean()
+print('ACC', np.mean(y_valid == preds_GBC))
+print('C-V', C_V)
+
+preds_GBC2 = GradientBoostingClassifier_Pipeline.predict(X_test)
+
+
+#######################
+#######################Exporting CSV
+#######################
+
+sub = pd.Series(preds_GBC2, index=X_test.index, name='Survived')
+sub.to_csv("model.csv", header=True)
+#######################
+#######################
+#######################
+
+
+
+
+#######################
+
